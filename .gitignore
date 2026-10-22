@@ -3,6 +3,9 @@
 *.env
 backend/.env
 !*.env.example
+backend/data/*.sqlite3
+backend/data/*.sqlite3-shm
+backend/data/*.sqlite3-wal
 
 # Python & Virtual Environments
 __pycache__/

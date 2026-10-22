@@ -3,12 +3,13 @@ Scene Understanding Endpoint
 Accepts structured object detection results from the mobile app
 and returns a natural language description of the scene via Gemini.
 """
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 from typing import List
 from loguru import logger
 
 from app.services.gemini_service import GeminiService
+from app.core.database import list_scene_descriptions, save_scene_description
 
 router = APIRouter()
 gemini = GeminiService()
@@ -34,6 +35,31 @@ class SceneResponse(BaseModel):
     objects_count: int
 
 
+class SceneHistoryItem(BaseModel):
+    id: int
+    created_at: str
+    scene_context: str
+    narrative: str
+    priority_alert: str
+    objects: List[DetectedObject]
+
+
+class SceneHistoryResponse(BaseModel):
+    items: List[SceneHistoryItem]
+    count: int
+
+
+@router.get("/history", response_model=SceneHistoryResponse)
+async def get_scene_history(limit: int = Query(default=20, ge=1, le=100)):
+    """Return recent scene descriptions saved by this backend instance."""
+    try:
+        items = list_scene_descriptions(limit=limit)
+        return SceneHistoryResponse(items=items, count=len(items))
+    except Exception as e:
+        logger.error(f"Scene history lookup failed: {e}")
+        raise HTTPException(status_code=500, detail="Could not load scene history")
+
+
 @router.post("/describe", response_model=SceneResponse)
 async def describe_scene(request: SceneRequest):
     """
@@ -49,6 +75,16 @@ async def describe_scene(request: SceneRequest):
             user_query=request.user_query,
             scene_context=request.scene_context,
         )
+        try:
+            save_scene_description(
+                scene_context=request.scene_context,
+                narrative=narrative,
+                priority_alert=alert,
+                objects=request.objects,
+            )
+        except Exception as e:
+            # Persistence should not prevent the live navigation response.
+            logger.error(f"Could not save scene description: {e}")
         return SceneResponse(
             narrative=narrative,
             priority_alert=alert,

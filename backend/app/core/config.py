@@ -20,6 +20,10 @@ class Settings(BaseSettings):
     GEMINI_API_KEY: str = ""
     GEMINI_MODEL: str = "gemini-3.5-flash-lite"
 
+    # SQLite database (stored in backend/data by default)
+    DATABASE_PATH: Path = BASE_DIR / "data" / "visionpath.sqlite3"
+    USER_PROVISIONING_KEY: str = ""
+
     # Server
     HOST: str = "0.0.0.0"
     PORT: int = 8000

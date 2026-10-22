@@ -17,6 +17,8 @@ Mobile (Flutter)
 
 Backend (FastAPI)
 ├── /scene/describe   → Gemini scene narration
+├── /scene/history    → Recent saved scene descriptions (SQLite)
+├── /users/register   → Save a user profile and role (SQLite)
 ├── /asr/transcribe   → Whisper speech-to-text
 └── /navigate/query   → Gemini conversational Q&A
 ```
@@ -41,6 +43,9 @@ cp .env.example .env           # Add your GEMINI_API_KEY
 pip install -r requirements.txt
 uvicorn main:app --reload
 # API docs at http://localhost:8000/docs
+# Scene history is stored in backend/data/visionpath.sqlite3 by default.
+# User profiles are stored in the same SQLite database.
+# Set USER_PROVISIONING_KEY in backend/.env before creating supervisor/admin profiles.
 ```
 
 ### Mobile App

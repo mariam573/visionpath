@@ -4,9 +4,17 @@ VisionPath Backend — Main FastAPI Application
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from loguru import logger
+from contextlib import asynccontextmanager
 
 from app.core.config import settings
+from app.core.database import initialize_database
 from app.api.v1.router import api_router
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    initialize_database()
+    yield
 
 app = FastAPI(
     title="VisionPath API",
@@ -14,6 +22,7 @@ app = FastAPI(
     version="0.1.0",
     docs_url="/docs",
     redoc_url="/redoc",
+    lifespan=lifespan,
 )
 
 # CORS
