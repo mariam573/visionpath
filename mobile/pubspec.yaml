@@ -1,0 +1,64 @@
+name: visionpath_app
+description: "AI-powered indoor navigation assistant for the visually impaired"
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.13.5
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  cupertino_icons: ^1.0.8
+
+  # ── Camera & Vision ──────────────────────────────────────────────
+  camera: ^0.12.1            # Camera feed for YOLOv8 input
+  image: ^4.2.0                # Image preprocessing
+
+  # ── On-device ML (YOLOv8 TFLite) ────────────────────────────────
+  tflite_flutter: ^0.12.1      # TFLite inference
+
+  # ── Networking (Backend API calls) ───────────────────────────────
+  dio: ^5.7.0                  # HTTP client
+  json_annotation: ^4.9.0
+
+  # ── Speech Recognition (Whisper via backend) ─────────────────────
+  record: ^7.1.2               # Microphone recording
+  permission_handler: ^11.3.1  # Mic/camera permissions
+
+  # ── Text-to-Speech & Audio ───────────────────────────────────────
+  flutter_tts: ^4.2.1          # TTS engine
+  audioplayers: ^6.1.0         # Spatial audio playback
+
+  # ── State Management ─────────────────────────────────────────────
+  flutter_riverpod: ^2.5.1     # Reactive state management
+  riverpod_annotation: ^2.3.5
+
+  # ── UI & Accessibility ───────────────────────────────────────────
+  google_fonts: ^6.2.1         # Typography
+  flutter_animate: ^4.5.0      # Micro-animations
+  gap: ^3.0.1                  # Spacing utility
+
+  # ── Utilities ────────────────────────────────────────────────────
+  logger: ^2.4.0
+  shared_preferences: ^2.3.2
+  path_provider: ^2.1.4
+  uuid: ^4.5.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+  build_runner: ^2.4.13
+  riverpod_generator: ^2.4.3
+  json_serializable: ^6.8.0
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - assets/models/           # TFLite model files
+    - assets/audio/            # Spatial audio assets
+    - assets/images/           # App images
