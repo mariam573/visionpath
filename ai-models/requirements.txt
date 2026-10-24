@@ -1,4 +1,8 @@
-ultralytics==8.3.2
+# Candidate-training environment lock for reproducible experiments only.
+# These versions are not the selected model/runtime configuration. After the
+# benchmark decision, record and checksum the final environment in the approved
+# mobile-validation report; do not infer a runtime choice from these pins.
+ultralytics==8.4.174
 onnx==1.17.0
 onnxruntime==1.19.2
 torch==2.4.1

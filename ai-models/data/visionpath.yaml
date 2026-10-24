@@ -1,44 +1,20 @@
-# VisionPath Custom Dataset Configuration
-# YOLOv8 / Ultralytics YAML format
+# VisionPath starter detection dataset
+# Keep public, permitted web, and consented phone captures in a versioned
+# dataset tree. Lock grouped splits before model selection.
 
-path: ../data          # root data directory (relative to this file)
-train: images/train    # training images
-val: images/val        # validation images
-test: images/test      # test images (optional)
+path: ../data
+train: images/train
+val: images/val
+test: images/test
 
-# ====================================================================
-# Class definitions
-# Phase 1: Standard COCO objects relevant to indoor navigation
-# Phase 2: Custom AIU campus objects added below
-# ====================================================================
-nc: 25  # total number of classes
-
+# Starter scope from the implementation plan. Door state, seat occupancy,
+# stair geometry and distance are separate evaluated tasks.
+nc: 7
 names:
-  # --- COCO base classes (navigation-relevant subset) ---
-  0:  person
-  1:  chair
-  2:  couch
-  3:  potted_plant
-  4:  bed
-  5:  dining_table
-  6:  toilet
-  7:  tv
-  8:  laptop
-  9:  mouse
-  10: keyboard
-  11: cell_phone
-  12: bottle
-  13: cup
-  14: sink
-  15: refrigerator
-  16: book
-  17: clock
-  18: scissors
-  19: backpack
-
-  # --- Custom VisionPath classes ---
-  20: door
-  21: door_handle
-  22: stairs
-  23: elevator_button
-  24: emergency_exit_sign
+  0: person
+  1: chair
+  2: table
+  3: door
+  4: cell_phone
+  5: keys_keyring
+  6: backpack

@@ -1,21 +1,17 @@
+# Backend runtime dependencies. Unsupported cloud/audio services are not included.
 fastapi==0.115.0
 uvicorn[standard]==0.30.6
-python-multipart==0.0.9
 pydantic==2.9.2
 pydantic-settings==2.5.2
 httpx==0.27.2
 
-# Gemini LLM
-google-generativeai==0.8.3
+# PostgreSQL persistence and reviewed, versioned schema migrations.
+SQLAlchemy>=2.0.36,<2.1
+alembic>=1.14,<2
+psycopg[binary]>=3.2,<4
 
-# Whisper ASR
-openai-whisper==20231117
-torch==2.4.1
-torchaudio==2.4.1
-
-# Audio processing
-soundfile==0.12.1
-librosa==0.10.2
+# OIDC access-token signature, issuer, audience and expiry verification.
+PyJWT[crypto]>=2.10,<3
 
 # Utilities
 python-dotenv==1.0.1

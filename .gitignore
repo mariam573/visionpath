@@ -3,9 +3,6 @@
 *.env
 backend/.env
 !*.env.example
-backend/data/*.sqlite3
-backend/data/*.sqlite3-shm
-backend/data/*.sqlite3-wal
 
 # Python & Virtual Environments
 __pycache__/
@@ -38,19 +35,19 @@ ai-models/runs/
 *.pt
 *.onnx
 
-# Flutter & Dart (Mobile)
-mobile/.dart_tool/
-mobile/build/
-mobile/.flutter-plugins
-mobile/.flutter-plugins-dependencies
+# Expo / React Native (Mobile)
+mobile/node_modules/
+mobile/.expo/
+mobile/.expo-shared/
+mobile/dist/
+mobile/web-build/
+mobile/android/
+mobile/ios/
 mobile/android/.gradle/
 mobile/android/local.properties
 mobile/android/app/build/
 mobile/ios/Pods/
 mobile/ios/.symlinks/
-mobile/ios/Flutter/Flutter.framework
-mobile/ios/Flutter/Flutter.podspec
-
 # IDE & Editor files
 .idea/
 .vscode/
@@ -65,3 +62,7 @@ mobile/ios/Flutter/Flutter.podspec
 Thumbs.db
 Desktop.ini
 $RECYCLE.BIN/
+
+# Exported mobile model artifacts
+*.tflite
+!mobile/assets/models/*.tflite

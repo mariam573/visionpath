@@ -1,178 +1,62 @@
-"""Small SQLite persistence layer for scene description history."""
-import json
-import sqlite3
-from contextlib import contextmanager
-from pathlib import Path
-from typing import Any, Dict, Iterator, List
+"""PostgreSQL session lifecycle. Schema changes are applied only via Alembic."""
+from functools import lru_cache
+from typing import Generator
 
-from app.core.config import settings
+from fastapi import HTTPException, status
+from sqlalchemy import create_engine, text
+from sqlalchemy.engine import Engine
+from sqlalchemy.orm import Session, sessionmaker
 
-
-def _connect() -> sqlite3.Connection:
-    database_path = Path(settings.DATABASE_PATH)
-    database_path.parent.mkdir(parents=True, exist_ok=True)
-    connection = sqlite3.connect(database_path, timeout=10)
-    connection.row_factory = sqlite3.Row
-    return connection
+from app.core.config import BASE_DIR, settings
 
 
-@contextmanager
-def _connection() -> Iterator[sqlite3.Connection]:
-    connection = _connect()
-    try:
-        with connection:
-            yield connection
-    finally:
-        connection.close()
-
-
-def initialize_database() -> None:
-    """Create the application tables if this is a fresh database."""
-    with _connection() as connection:
-        connection.execute(
-            """
-            CREATE TABLE IF NOT EXISTS users (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                full_name TEXT NOT NULL,
-                email TEXT NOT NULL COLLATE NOCASE UNIQUE,
-                phone TEXT,
-                role TEXT NOT NULL DEFAULT 'blind_person'
-                    CHECK (role IN ('blind_person', 'supervisor', 'admin')),
-                preferred_language TEXT NOT NULL DEFAULT 'en',
-                accessibility_preferences_json TEXT NOT NULL DEFAULT '{}',
-                created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
-                updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
-            )
-            """
-        )
-        connection.execute(
-            "CREATE INDEX IF NOT EXISTS idx_users_role ON users(role)"
-        )
-        connection.execute(
-            """
-            CREATE TABLE IF NOT EXISTS scene_descriptions (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
-                scene_context TEXT NOT NULL,
-                narrative TEXT NOT NULL,
-                priority_alert TEXT NOT NULL DEFAULT '',
-                objects_json TEXT NOT NULL
-            )
-            """
-        )
-        connection.execute(
-            "CREATE INDEX IF NOT EXISTS idx_scene_descriptions_created_at "
-            "ON scene_descriptions(created_at DESC)"
-        )
-
-
-def create_user(
-    *,
-    full_name: str,
-    email: str,
-    role: str = "blind_person",
-    phone: str | None = None,
-    preferred_language: str = "en",
-    accessibility_preferences: Dict[str, Any] | None = None,
-) -> int:
-    """Store a user profile; callers must authorize privileged role changes."""
-    if role not in {"blind_person", "supervisor", "admin"}:
-        raise ValueError("Unsupported user role")
-    with _connection() as connection:
-        cursor = connection.execute(
-            """
-            INSERT INTO users
-                (full_name, email, phone, role, preferred_language,
-                 accessibility_preferences_json)
-            VALUES (?, ?, ?, ?, ?, ?)
-            """,
-            (
-                full_name.strip(),
-                email.strip().lower(),
-                phone,
-                role,
-                preferred_language,
-                json.dumps(accessibility_preferences or {}, ensure_ascii=False),
-            ),
-        )
-        return int(cursor.lastrowid)
-
-
-def get_user(user_id: int) -> Dict[str, Any] | None:
-    """Load a stored profile by ID for use by an authorized caller."""
-    with _connection() as connection:
-        row = connection.execute(
-            """
-            SELECT id, full_name, email, phone, role, preferred_language,
-                   accessibility_preferences_json, created_at, updated_at
-            FROM users
-            WHERE id = ?
-            """,
-            (user_id,),
-        ).fetchone()
-
-    if row is None:
-        return None
-    return {
-        "id": row["id"],
-        "full_name": row["full_name"],
-        "email": row["email"],
-        "phone": row["phone"],
-        "role": row["role"],
-        "preferred_language": row["preferred_language"],
-        "accessibility_preferences": json.loads(
-            row["accessibility_preferences_json"]
-        ),
-        "created_at": row["created_at"],
-        "updated_at": row["updated_at"],
-    }
-
-
-def save_scene_description(
-    *,
-    scene_context: str,
-    narrative: str,
-    priority_alert: str,
-    objects: List[Any],
-) -> int:
-    """Persist a scene result without storing the audio query or any image."""
-    objects_json = json.dumps(
-        [obj.model_dump(mode="json") for obj in objects],
-        ensure_ascii=False,
+@lru_cache(maxsize=1)
+def get_engine() -> Engine:
+    if settings.DATABASE_URL is None:
+        raise RuntimeError("PostgreSQL DATABASE_URL is not configured")
+    return create_engine(
+        settings.DATABASE_URL.get_secret_value(),
+        pool_pre_ping=True,
+        pool_recycle=1800,
+        hide_parameters=True,
     )
-    with _connection() as connection:
-        cursor = connection.execute(
-            """
-            INSERT INTO scene_descriptions
-                (scene_context, narrative, priority_alert, objects_json)
-            VALUES (?, ?, ?, ?)
-            """,
-            (scene_context, narrative, priority_alert, objects_json),
+
+
+@lru_cache(maxsize=1)
+def get_session_factory():
+    return sessionmaker(bind=get_engine(), autoflush=False, expire_on_commit=False)
+
+
+def get_db() -> Generator[Session, None, None]:
+    if settings.DATABASE_URL is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="PostgreSQL is not configured",
         )
-        return int(cursor.lastrowid)
+    session = get_session_factory()()
+    try:
+        yield session
+    finally:
+        session.close()
 
 
-def list_scene_descriptions(limit: int = 20) -> List[Dict[str, Any]]:
-    """Return newest saved scene descriptions first."""
-    with _connection() as connection:
-        rows = connection.execute(
-            """
-            SELECT id, created_at, scene_context, narrative, priority_alert, objects_json
-            FROM scene_descriptions
-            ORDER BY created_at DESC, id DESC
-            LIMIT ?
-            """,
-            (limit,),
-        ).fetchall()
+def check_database_readiness() -> tuple[bool, str]:
+    """Confirm PostgreSQL is reachable and the database is at the migration head."""
+    if settings.DATABASE_URL is None:
+        return False, "database_not_configured"
+    try:
+        from alembic.config import Config
+        from alembic.migration import MigrationContext
+        from alembic.script import ScriptDirectory
 
-    return [
-        {
-            "id": row["id"],
-            "created_at": row["created_at"],
-            "scene_context": row["scene_context"],
-            "narrative": row["narrative"],
-            "priority_alert": row["priority_alert"],
-            "objects": json.loads(row["objects_json"]),
-        }
-        for row in rows
-    ]
+        with get_engine().connect() as connection:
+            connection.execute(text("SELECT 1"))
+            migration_context = MigrationContext.configure(connection)
+            applied = set(migration_context.get_current_heads())
+        alembic_config = Config(str(BASE_DIR / "alembic.ini"))
+        expected = set(ScriptDirectory.from_config(alembic_config).get_heads())
+        if not applied or applied != expected:
+            return False, "database_migrations_not_current"
+        return True, "ready"
+    except Exception:
+        return False, "database_unavailable_or_migration_error"

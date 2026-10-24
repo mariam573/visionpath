@@ -1,91 +1,95 @@
-"""User profile registration endpoint."""
-import sqlite3
-import hmac
-from typing import Any, Dict, Literal
+"""Self-service profile endpoints bound to the verified OIDC subject."""
+import json
+from datetime import datetime, timezone
+from typing import Any, Literal
 
-from fastapi import APIRouter, Header, HTTPException, status
-from pydantic import BaseModel, Field, field_validator
+from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from sqlalchemy.orm import Session
 
-from app.core.database import create_user, get_user
-from app.core.config import settings
+from app.core.database import get_db
+from app.core.identity import get_current_user
+from app.models import User
 
-router = APIRouter()
+router = APIRouter(prefix="/users", tags=["profiles"])
 
 
-class UserRegistrationRequest(BaseModel):
-    full_name: str = Field(..., min_length=1, max_length=120)
-    email: str = Field(..., min_length=3, max_length=254)
+class ProfilePatch(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    full_name: str | None = Field(default=None, min_length=1, max_length=120)
     phone: str | None = Field(default=None, max_length=40)
-    preferred_language: str = Field(default="en", min_length=2, max_length=16)
-    accessibility_preferences: Dict[str, Any] = Field(default_factory=dict)
-    role: Literal["blind_person", "supervisor", "admin"] = "blind_person"
+    preferred_language: Literal["en", "ar"] | None = None
+    accessibility_preferences: dict[str, Any] | None = None
 
-    @field_validator("full_name", "email", "preferred_language")
+    @field_validator("full_name")
     @classmethod
-    def strip_required_text(cls, value: str) -> str:
-        value = value.strip()
-        if not value:
-            raise ValueError("This field cannot be blank")
+    def nonblank_name(cls, value: str | None) -> str | None:
+        if value is not None and not value.strip():
+            raise ValueError("full_name cannot be blank")
+        return value.strip() if value is not None else None
+
+    @field_validator("accessibility_preferences")
+    @classmethod
+    def bound_preferences(cls, value: dict[str, Any] | None) -> dict[str, Any] | None:
+        if value is not None and len(json.dumps(value, ensure_ascii=False)) > 4096:
+            raise ValueError("Accessibility preferences must be 4 KB or smaller")
         return value
 
-    @field_validator("email")
-    @classmethod
-    def validate_email_shape(cls, value: str) -> str:
-        if value.count("@") != 1 or "." not in value.rsplit("@", 1)[-1]:
-            raise ValueError("Enter a valid email address")
-        return value.lower()
+    @model_validator(mode="after")
+    def reject_null_for_required_profile_fields(self):
+        for field in ("full_name", "preferred_language", "accessibility_preferences"):
+            if field in self.model_fields_set and getattr(self, field) is None:
+                raise ValueError(f"{field} cannot be null")
+        return self
 
 
-class UserProfileResponse(BaseModel):
-    id: int
+class ProfileResponse(BaseModel):
+    id: str
     full_name: str
-    email: str
+    email: str | None
+    email_verified: bool
     phone: str | None
     role: str
     preferred_language: str
-    accessibility_preferences: Dict[str, Any]
-    created_at: str
+    accessibility_preferences: dict[str, Any]
+    created_at: datetime
+    updated_at: datetime
 
 
-@router.post(
-    "/register",
-    response_model=UserProfileResponse,
-    status_code=status.HTTP_201_CREATED,
-)
-async def register_user(
-    request: UserRegistrationRequest,
-    provisioning_key: str | None = Header(default=None, alias="X-Provisioning-Key"),
-):
-    """Create a profile; supervisor/admin roles require the provisioning key."""
-    if request.role != "blind_person":
-        if not settings.USER_PROVISIONING_KEY:
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="Privileged role provisioning is not configured",
-            )
-        if not hmac.compare_digest(
-            provisioning_key or "", settings.USER_PROVISIONING_KEY
-        ):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="A valid provisioning key is required for this role",
-            )
-    try:
-        user_id = create_user(
-            full_name=request.full_name,
-            email=request.email,
-            role=request.role,
-            phone=request.phone,
-            preferred_language=request.preferred_language,
-            accessibility_preferences=request.accessibility_preferences,
-        )
-    except sqlite3.IntegrityError:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="An account with this email already exists",
-        )
+def serialize_profile(user: User) -> ProfileResponse:
+    return ProfileResponse(
+        id=str(user.id),
+        full_name=user.full_name,
+        email=user.email,
+        email_verified=user.email_verified,
+        phone=user.phone,
+        role=user.role,
+        preferred_language=user.preferred_language,
+        accessibility_preferences=user.accessibility_preferences,
+        created_at=user.created_at,
+        updated_at=user.updated_at,
+    )
 
-    user = get_user(user_id)
-    if user is None:
-        raise HTTPException(status_code=500, detail="Could not load the new profile")
-    return user
+
+@router.get("/me", response_model=ProfileResponse)
+def read_my_profile(user: User = Depends(get_current_user)) -> ProfileResponse:
+    """Create or return only the profile belonging to the verified token subject."""
+    return serialize_profile(user)
+
+
+@router.patch("/me", response_model=ProfileResponse)
+def update_my_profile(
+    patch: ProfilePatch,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> ProfileResponse:
+    updates = patch.model_dump(exclude_unset=True)
+    if not updates:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No profile changes supplied")
+    for field, value in updates.items():
+        setattr(user, field, value)
+    user.updated_at = datetime.now(timezone.utc)
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return serialize_profile(user)

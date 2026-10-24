@@ -1,0 +1,40 @@
+{
+  "expo": {
+    "name": "VisionPath",
+    "slug": "visionpath",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "visionpath",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "platforms": ["android", "ios"],
+    "ios": {
+      "bundleIdentifier": "com.visionpath.visionpathApp",
+      "infoPlist": {
+        "NSCameraUsageDescription": "VisionPath uses the camera to provide visual assistance on your device."
+      }
+    },
+    "android": {
+      "package": "com.visionpath.visionpath_app",
+      "permissions": ["android.permission.CAMERA"]
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "minSdkVersion": 26
+          }
+        }
+      ],
+      [
+        "react-native-fast-tflite",
+        {"enableAndroidGpuLibraries": true}
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}

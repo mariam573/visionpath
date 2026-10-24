@@ -1,42 +1,33 @@
-"""
-VisionPath — YOLOv8 Training Script
+"""Train a VisionPath detector candidate on a versioned dataset.
 
-Usage:
-    python train.py --dataset data/visionpath.yaml --model yolov8n --epochs 100
-
-This script fine-tunes YOLOv8 on the VisionPath custom dataset which includes
-COCO base objects + custom indoor navigation objects (doors, handles, signs, etc.)
+Usage from ai-models/: python train.py --dataset data/visionpath.yaml --model yolo26n.pt
+This experiment does not establish mobile performance or application support.
 """
 import argparse
-from pathlib import Path
 from loguru import logger
 from ultralytics import YOLO
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Train YOLOv8 for VisionPath")
-    parser.add_argument("--dataset", type=str, default="data/visionpath.yaml",
-                        help="Path to dataset YAML file")
-    parser.add_argument("--model", type=str, default="yolov8n",
-                        choices=["yolov8n", "yolov8s", "yolov8m"],
-                        help="YOLOv8 model size")
+    parser = argparse.ArgumentParser(description="Train a VisionPath detector candidate")
+    parser.add_argument("--dataset", default="data/visionpath.yaml")
+    parser.add_argument(
+        "--model", default="yolo26n.pt",
+        help="Pretrained detector checkpoint, such as yolo26n.pt or yolo26s.pt",
+    )
     parser.add_argument("--epochs", type=int, default=100)
     parser.add_argument("--imgsz", type=int, default=640)
     parser.add_argument("--batch", type=int, default=16)
-    parser.add_argument("--device", type=str, default="0",
-                        help="CUDA device id or 'cpu'")
-    parser.add_argument("--project", type=str, default="runs/train")
-    parser.add_argument("--name", type=str, default="visionpath_v1")
+    parser.add_argument("--device", default="0", help="CUDA device id or 'cpu'")
+    parser.add_argument("--project", default="runs/train")
+    parser.add_argument("--name", default="visionpath_candidate")
     return parser.parse_args()
 
 
 def train(args):
-    logger.info(f"Starting VisionPath YOLOv8 training with model: {args.model}")
-
-    # Load pretrained weights from COCO
-    model = YOLO(f"{args.model}.pt")
-
-    results = model.train(
+    logger.info(f"Training candidate {args.model} on {args.dataset}")
+    model = YOLO(args.model)
+    return model.train(
         data=args.dataset,
         epochs=args.epochs,
         imgsz=args.imgsz,
@@ -44,7 +35,6 @@ def train(args):
         device=args.device,
         project=args.project,
         name=args.name,
-        # Augmentation settings
         hsv_h=0.015,
         hsv_s=0.7,
         hsv_v=0.4,
@@ -55,18 +45,13 @@ def train(args):
         fliplr=0.5,
         mosaic=1.0,
         mixup=0.0,
-        # Pretrained COCO weights — transfer learning
         pretrained=True,
-        # Performance
         workers=8,
-        cache=True,
-        amp=True,  # Automatic Mixed Precision
+        cache=False,
+        amp=True,
         verbose=True,
     )
-    logger.info(f"Training complete. Results: {results}")
-    return results
 
 
 if __name__ == "__main__":
-    args = parse_args()
-    train(args)
+    train(parse_args())
